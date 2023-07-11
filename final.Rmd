@@ -1,0 +1,442 @@
+```{r}
+library(ggplot2)
+data = read.csv("train.csv")
+ 
+data$Alley = ifelse(is.na(data$Alley), "NoA", data$Alley)
+data$BsmtQual = ifelse(is.na(data$BsmtQual), "NB", data$BsmtQual)
+data$BsmtCond = ifelse(is.na(data$BsmtCond), "NB", data$BsmtCond)
+data$BsmtExposure = ifelse(is.na(data$BsmtExposure), "NB", data$BsmtExposure)
+data$BsmtFinType1 = ifelse(is.na(data$BsmtFinType1), "NB", data$BsmtFinType1)
+data$BsmtFinType2 = ifelse(is.na(data$BsmtFinType2), "NB", data$BsmtFinType2)
+data$FireplaceQu = ifelse(is.na(data$FireplaceQu), "NF", data$FireplaceQu)
+data$GarageType = ifelse(is.na(data$GarageType), "NG", data$GarageType)
+data$GarageFinish = ifelse(is.na(data$GarageFinish), "NG", data$GarageFinish)
+data$GarageQual = ifelse(is.na(data$GarageQual), "NG", data$GarageQual)
+data$GarageCond = ifelse(is.na(data$GarageCond), "NG", data$GarageCond)
+data$PoolQC = ifelse(is.na(data$PoolQC), "NP", data$PoolQC)
+data$Fence = ifelse(is.na(data$Fence), "NF", data$Fence)
+data$MiscFeature = ifelse(is.na(data$MiscFeature), "None", data$MiscFeature)
+
+ cols = c('MSSubClass', 'MSZoning', 'Street', 'Alley', 'LotShape', 'LandContour', 
+         'Utilities', 'LotConfig', 'LandSlope', 'Neighborhood', 'Condition1', 
+         'Condition2', 'BldgType', 'HouseStyle',   
+         'RoofStyle', 'RoofMatl', 'Exterior1st', 'Exterior2nd', 'MasVnrType', 
+         'ExterQual', 'ExterCond', 'Foundation', 'BsmtQual', 'BsmtCond', 
+         'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2', 'Heating', 'HeatingQC', 
+         'CentralAir', 'Electrical', 'KitchenQual', 'Functional', 'FireplaceQu', 
+         'GarageType', 'GarageFinish', 'GarageQual', 'GarageCond', 'PavedDrive', 
+         'PoolQC', 'Fence', 'MiscFeature', 'SaleType', 'SaleCondition', 'YrSold', 'MoSold', 'OverallQual')
+
+ 
+data$SalePrice = data$SalePrice  / 1000
+
+data[cols] = lapply(data[cols], factor)
+
+
+# remove  variable
+data = subset(data, select = -c(Id))
+#  
+# data  = subset(data, select = -c(ExterQual,PoolQC, PoolArea, LandSlope,LowQualFinSF, BldgType, MiscFeature, Functional,Utilities))
+ 
+
+ 
+ 
+# remove remaining NA
+data = data[complete.cases(data), ]
+
+# save to file
+save(data, file="cleaned_data.Rda")
+
+
+# MODELS
+load("cleaned_data.Rda")
+
+```
+
+
+Data exploration & vizualization  :
+```{r}
+library(ggridges)
+library("tidyverse")
+library(hrbrthemes)
+library(GGally)
+library(viridis)
+```
+
+Distribution of sale prices :
+```{r}
+############### 
+
+ggplot (data, aes ( x=  SalePrice)) + geom_density(fill='#555599') + 
+  geom_vline(xintercept = median ( data$SalePrice) , color  = 'red', linewidth= 1.4)+
+  geom_text(   y =  0.00004 ,
+    x = mean(data$SalePrice) ,
+    label = "Median",
+    vjust = -1,
+    hjust = 1, color='grey' , angle=40
+  ) + labs ( x='Sale Price in thousands of dollars' , title= 'Distribution of Sale Prices')+theme_minimal()
+
+```
+
+Sale prices per Neighborhood : 
+
+```{r}
+######Sale prices per Neighborhood
+data$Neighborhood.mean = 0
+grp = data %>%
+  group_by(Neighborhood) %>%
+  summarise(S  = mean(SalePrice))
+
+ data$Neighborhood.mean = grp$S[ match (data$Neighborhood  , grp$Neighborhood )]
+
+cc <- scales::seq_gradient_pal("blue", "red", "Lab")(seq(0,1,length.out=25))
+
+ggplot ( data, aes ( x=  SalePrice, y= reorder ( Neighborhood,SalePrice ) ,
+               group=   Neighborhood,    fill=  Neighborhood.mean  )) + 
+  geom_density_ridges(alpha=0.5)  + labs(
+  x='Sale Price in thousands of dollars' , y= 'Neighborhood' ,
+  title= 'Distribution of  Sale Prices according to Neighborhood'
+) +  guides ( fill  = guide_colorbar(title=
+                                       'Mean Sale Price'
+                                       )) + 
+  scale_fill_gradient(high='red', low='green') +  theme_minimal() + theme(plot.title = element_text(size=12))
+data = subset(data, select = -c(Neighborhood.mean))
+
+```
+
+
+Sale prices according to overall quality : 
+```{r}
+
+#sale prices according to overallq
+ggplot(data, aes(x = as.factor(OverallQual), y = SalePrice, fill= OverallQual)) +
+  geom_boxplot(alpha = 0.5) +
+  geom_jitter(data= data ,alpha = 0.24  ) +
+  labs(
+    x =  'Rates the overall material and finish of the house',
+    title = 'Sale Prices according to overall quality'
+  ) + scale_fill_continuous(high='green', low='red')+
+  geom_hline(yintercept = mean(data$SalePrice), color='red', linewidth=1.5) +
+  geom_text(
+    x = 3,
+    y = mean(data$SalePrice),
+    label = "Mean Sale Price",
+    vjust = -1,
+    hjust = 1, color='red'
+  ) +  theme_minimal() + theme ( legend.position='none')  
+
+```
+
+```{r}
+
+#sale prices accordng to basement area + height
+
+labels = c("Excellent (100+ inches)	"  , "Good (90-99 inches)"  , 
+           "Typical (80-89 inches)"  , "Fair (70-79 inches)" , "Poor (<70 inches")
+labels = rev(labels)
+
+ggplot ( data , aes(  x = TotalBsmtSF  ,  y = SalePrice, 
+                      ,color= as.integer (BsmtQual) )  ) +
+  geom_point() +
+  labs (x='Total square feet of basement area', title = 'Sale Prices according to basment area') + 
+  scale_color_continuous( low   = '#7AD46C' ,
+                          high= 'red', labels=labels)+
+  guides ( color=  guide_legend(title= 'Height of the basement', labels= labels) ) +
+ theme_minimal() +  theme ( legend.position = c(0.8,0.83))  
+
+```
+```{r}
+
+   
+  #####sale price according to zoning classification 
+  ggplot ( data , aes            (   x=reorder (MSZoning,SalePrice), y=SalePrice, fill= MSZoning )) +
+    geom_boxplot() +    scale_x_discrete(
+      labels=c(  'C (all)' ='Commercial'   , 'FV'='Floating Village Residential' , 'I'='dfd' 
+               , 'RH'='Residential High Density ', 
+               'RL' ='Residential Low Density',  
+               'RM' =      'Residential Medium Density'      )) +labs (
+                 x= 'zoning classification of the sale' , y='Sale Price' , 
+                 title = 'Sale Price according to zoning classification  '
+               ) +
+    scale_colour_hue(l = 45) +  theme_minimal() + 
+    theme(legend.position = 'none', axis.text.x = element_text(face="bold", color="#993333",vjust=.97 ,hjust=1,
+                                     size=10, angle=45)) 
+```
+Exploring some one-dominant category variables : 
+```{r}
+
+#data2 = subset(data, select = -c(ExterQual,PoolQC, PoolArea, LandSlope,LowQualFinSF, BldgType, MiscFeature, Functional))
+
+ ggplot ( data, aes ( x=  ExterQual)) + geom_bar(fill='lightblue') +
+   labs (x= 'quality of the material on the exterior ') + theme_minimal()
+```
+```{r}
+
+ ggplot ( data, aes ( x=  PoolQC)) + geom_bar(fill='lightblue') +
+   labs (x= 'Pool Quality') + theme_minimal()
+
+
+```
+```{r}
+table (data$PoolQC)
+```
+```{r}
+
+ ggplot ( data, aes ( x=  PoolArea)) + geom_bar(fill='lightblue') +
+   labs (x= 'PoolArea') + theme_minimal()
+
+
+```
+```{r}
+
+ ggplot ( data, aes ( x=  LandSlope)) + geom_bar(fill='lightblue') +
+   labs (x= 'Slope of property') + theme_minimal()
+
+
+```
+
+
+Data preparation for Lasso models : 
+```{r}
+library ( caret)
+set.seed(123)
+idx <- createDataPartition(data$SalePrice, p = .8, list = FALSE)
+
+train = data[idx, ]
+test = data[-idx, ]
+ 
+#Regression preparation:
+x_train = model.matrix(SalePrice ~ ., train)
+x_test = model.matrix(SalePrice ~ ., test)
+y_train = train$SalePrice
+y_test = test$SalePrice
+
+```
+
+Lasso regression : 
+```{r}
+library(glmnet)
+set.seed(123)
+lasso_model = cv.glmnet(x_train, y_train, alpha = 1)
+lambda_lasso = lasso_model$lambda.min
+ 
+lasso_predictions_min = predict(lasso_model, newx = x_test, s = lambda_lasso)
+lasso_predictions_1se = predict(lasso_model, newx = x_test, s = lasso_model$lambda.1se )
+
+```
+
+
+Evaluating the model : 
+```{r}
+
+ 
+MAPE_lasso_min <- mean(abs( (y_test - lasso_predictions_min) / y_test)) * 100
+MAPE_lasso_1se <- mean(abs( (y_test - lasso_predictions_1se) / y_test)) * 100
+
+RMSE_lasso_min = sqrt (mean ((y_test - lasso_predictions_min)^2 ))
+RMSE_lasso_1se= sqrt (mean ((y_test - lasso_predictions_1se)^2 ))
+
+lasso_coefs_min  = coef ( lasso_model ,   s = "lambda.min" )
+lasso_coefs_1se = coef ( lasso_model ,   s = "lambda.1se" )
+lasso_variables_min = names (lasso_coefs_min[lasso_coefs_min[ , 1] != 0, ] )
+lasso_variables_1se = names (lasso_coefs_1se[lasso_coefs_1se[ , 1] != 0, ] )
+ c( MAPE_lasso_min ,MAPE_lasso_1se )
+
+c(RMSE_lasso_min ,RMSE_lasso_1se  )
+```
+
+
+```{r}
+#vizualizing the minimal lambda model : 
+subtitle = paste0 ( 'MAPE= ' ,round(MAPE_lasso_min,4) , ', RMSE= ',
+                round(RMSE_lasso_min,4)     , ' / ', length (lasso_variables_min ), ' variables'  ) 
+
+
+ggplot ( mapping = aes ( x=y_test  , y=lasso_predictions_min  )) + geom_point( color='red', size=3) +
+  geom_abline(intercept = 0, slope=1, color='black')+ labs (
+    x= 'Actual House Prices ' , y='Predicted House Prices', 
+    title = 'Performance of Lasso model ( Minimal lambda) / Before dropping variables' ,
+    subtitle =  subtitle  )+theme(plot.title = element_text(size=10))+
+  theme_minimal()
+```
+
+```{r}
+#vizualizing the 1se lambda model : 
+subtitle = paste0 ( 'MAPE= ' ,round(MAPE_lasso_1se,4) , ', RMSE= ',
+                round(RMSE_lasso_1se,4)     , ' / ', length (lasso_variables_1se ), ' variables'  ) 
+
+
+ggplot ( mapping = aes ( x=y_test  , y=lasso_predictions_1se  )) + geom_point( color='red', size=3) +
+  geom_abline(intercept = 0, slope=1, color='black')+ labs (
+    x= 'Actual House Prices ' , y='Predicted House Prices', 
+    title = 'Performance of Lasso model ( 1se lambda) / Before dropping variables' ,
+    subtitle =  subtitle  )+theme(plot.title = element_text(size=10))+
+  theme_minimal()
+ 
+```
+Now let's drop some variables and retrain our model and evaluate it again : 
+
+```{r}
+data  = subset(data, select = -c(ExterQual,PoolQC, PoolArea, LandSlope,LowQualFinSF, BldgType, MiscFeature, Functional,Utilities))
+
+```
+
+
+```{r}
+set.seed(123)
+idx <- createDataPartition(data$SalePrice, p = .8, list = FALSE)
+
+train = data[idx, ]
+test = data[-idx, ]
+ 
+#Regression preparation:
+x_train = model.matrix(SalePrice ~ ., train)
+x_test = model.matrix(SalePrice ~ ., test)
+y_train = train$SalePrice
+y_test = test$SalePrice
+
+set.seed(123)
+ lasso_model2 = cv.glmnet(x_train, y_train, alpha = 1)
+lambda_lasso2 = lasso_model2$lambda.min
+ 
+lasso_predictions2_min = predict(lasso_model2, newx = x_test, s = lambda_lasso2)
+lasso_predictions2_1se = predict(lasso_model2, newx = x_test, s = lasso_model2$lambda.1se )
+
+ 
+MAPE_lasso_min2 <- mean(abs( (y_test - lasso_predictions2_min) / y_test)) * 100
+MAPE_lasso_1se2 <- mean(abs( (y_test - lasso_predictions2_1se) / y_test)) * 100
+
+RMSE_lasso_min2 = sqrt (mean ((y_test - lasso_predictions2_min)^2 ))
+RMSE_lasso_1se2= sqrt (mean ((y_test - lasso_predictions2_1se)^2 ))
+
+lasso_coefs_min2  = coef ( lasso_model2 ,   s = "lambda.min" )
+lasso_coefs_1se2 = coef ( lasso_model2 ,   s = "lambda.1se" )
+lasso_variables_min2 = names (lasso_coefs_min2[lasso_coefs_min2[ , 1] != 0, ] )
+lasso_variables_1se2 = names (lasso_coefs_1se2[lasso_coefs_1se2[ , 1] != 0, ] )
+
+ c( MAPE_lasso_min2 ,MAPE_lasso_1se2 )
+
+c( RMSE_lasso_min2 , RMSE_lasso_1se2)
+
+```
+
+vizualize again : 
+```{r}
+#vizualizing the minimal lambda model : 
+subtitle = paste0 ( 'MAPE= ' ,round(MAPE_lasso_min2,4) , ', RMSE= ',
+                round(RMSE_lasso_min2,4)     , ' / ', length (lasso_variables_min2 ), ' variables'  ) 
+
+
+ggplot ( mapping = aes ( x=y_test  , y=lasso_predictions2_min  )) + geom_point( color='red') +
+  geom_abline(intercept = 0, slope=1, color='black')+ labs (
+    x= 'Actual House Prices ' , y='Predicted House Prices', 
+    title = 'Performance of Lasso model ( Minimal lambda) / After dropping some variables' ,
+    subtitle =  subtitle  )+theme(plot.title = element_text(size=10)) +  theme_minimal()
+```
+
+```{r}
+#vizualizing the 1se lambda model : 
+subtitle = paste0 ( 'MAPE= ' ,round(MAPE_lasso_1se2,4) , ', RMSE= ',
+                round(RMSE_lasso_1se2,4)     , ' / ', length (lasso_variables_1se2 ), ' variables'  ) 
+
+
+ggplot ( mapping = aes ( x=y_test  , y=lasso_predictions2_1se  )) + geom_point( color='red') +
+  geom_abline(intercept = 0, slope=1, color='black')+ labs (
+    x= 'Actual House Prices ' , y='Predicted House Prices', 
+    title = 'Performance of Lasso model ( 1se lambda) / After dropping some variables' ,
+    subtitle =  subtitle  )+theme(plot.title = element_text(size=10)) +  theme_minimal()
+```
+
+Now will scale the data : 
+
+```{r}
+library(caret)
+preprocessed <- preProcess(data , method = c("center", "scale"))
+scaled_df <- predict(preprocessed, data )
+data2   = scaled_df
+#splitting again  :
+set.seed(123)
+idx <- createDataPartition(data2$SalePrice, p = .8, list = FALSE)
+
+train2 = data2[idx, ]
+test2 = data2[-idx, ]
+ 
+#Regression preparation:
+x_train2 = model.matrix(SalePrice ~ ., train2)
+x_test2 = model.matrix(SalePrice ~ ., test2)
+y_train2 = train2$SalePrice
+y_test2 = test2$SalePrice
+ lasso_model_scaled = cv.glmnet(x_train2, y_train2, alpha = 1)
+ 
+ lasso_coefs_1se_scaled  = coef ( lasso_model_scaled ,   s = "lambda.1se" )
+ 
+lasso_coefs_1se_scaled = lasso_coefs_1se_scaled[lasso_coefs_1se_scaled[ , 1] != 0, ]
+ 
+
+```
+
+```{r}
+lasso_coefs_1se_scaled = abs ( lasso_coefs_1se_scaled)
+lasso_coefs_1se_scaled=lasso_coefs_1se_scaled[-c(1)]
+lasso_coefs_1se = data.frame   (lasso_coefs_1se_scaled) 
+ lasso_coefs_1se_scaled$vars = rownames (lasso_coefs_1se_scaled)
+ names( lasso_coefs_1se_scaled ) = c('coeffs','vars' )
+ 
+ggplot (lasso_coefs_1se_scaled , aes ( x=abs(coeffs), y=reorder (vars,abs(coeffs) )          )) + geom_point(size=3) +
+  labs ( x= 'Absolute value of coefficients after scaling', y='Predictors', 
+         title='Variables Importance for Lasso model ( 1se lambda)'
+          
+           )+ theme_minimal() + theme( plot.title = element_text(size=10))
+```
+
+Relaxed Lasso  :
+
+```{r}
+set.seed(123)
+rl_model = cv.glmnet(x_train, y_train, relax = TRUE)
+lambda_rl = rl_model$lambda.min
+ 
+rl_predictions = predict(rl_model, newx = x_test, s = lambda_rl) 
+rl_predictions2 =predict(rl_model, newx = x_test, s = rl_model$lambda.1se) 
+rl_rmse_min = sqrt(mean((y_test - rl_predictions)^2))
+rl_rmse_1se = sqrt(mean((y_test - rl_predictions2)^2))
+
+MAPE_rl_min <- mean(abs( (y_test - rl_predictions) / y_test)) * 100
+MAPE_rl_1se <- mean(abs( (y_test - rl_predictions2) / y_test)) * 100
+
+c (rl_rmse_min, rl_rmse_1se )
+ c (MAPE_rl_min, MAPE_rl_1se )
+```
+Final comparision between lasso and relaxed :
+```{r}
+RMSE_lasso_min2= round (RMSE_lasso_min2,4)
+RMSE_lasso_1se2 = round (RMSE_lasso_1se2,4)
+rl_rmse_min = round (rl_rmse_min,4)
+rl_rmse_1se = round (rl_rmse_1se,4)
+
+final = data.frame (matrix ( ncol = 3))
+names ( final) = c ('Model', 'min.lambda' , '1se.lambda' )
+ 
+final = rbind (final , c('Lasso',RMSE_lasso_min2, RMSE_lasso_1se2) )
+final = rbind (final , c('Relaxed Lasso' ,rl_rmse_min, rl_rmse_1se) )
+final
+
+```
+
+```{r}
+set.seed(123)
+ridge_model = cv.glmnet(x_train, y_train, alpha=0)
+ 
+ 
+ridge_predictions_min = predict(ridge_model, newx = x_test, s = ridge_model$lambda.min) 
+ridge_predictions_1se =predict(rl_model, newx = x_test, s = rl_model$lambda.1se) 
+ridge_rmse_min = sqrt(mean((y_test - ridge_predictions_min)^2))
+ridge_rmse_1se = sqrt(mean((y_test - ridge_predictions_1se)^2))
+
+MAPE_ridge_min <- mean(abs( (y_test - ridge_predictions_min) / y_test)) * 100
+MAPE_ridge_1se <- mean(abs( (y_test - ridge_predictions_1se) / y_test)) * 100
+
+c (ridge_rmse_min, ridge_rmse_1se )
+ c (MAPE_ridge_min, MAPE_ridge_1se )
+```
+
